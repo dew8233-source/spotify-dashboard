@@ -36,7 +36,7 @@
 </head>
 <body>
 <header>
-  <h1>What makes a song popular? Six genres on Spotify</h1>
+  <h1>Analyzing song characteristics and popularity. Six genres on Spotify</h1>
   <p class="sub">Reggae, dancehall, reggaeton, afrobeat, pop and R&amp;B &middot; Spotify Tracks Dataset (Kaggle)</p>
 </header>
 
@@ -60,11 +60,11 @@
 const GENRES = ["reggae", "dancehall", "reggaeton", "afrobeat", "pop", "r-n-b"];
 // Okabe-Ito colorblind-safe palette; each genre keeps the same color in every view
 const COLORS = {
-  "reggae": "#009E73", "dancehall": "#E69F00", "reggaeton": "#CC79A7",
-  "afrobeat": "#D55E00", "pop": "#0072B2", "r-n-b": "#56B4E9"
+  "reggae": "#009E73", "dancehall": "#C9A227", "reggaeton": "#E66101",
+  "afrobeat": "#B2182B", "pop": "#0077BB", "r-n-b": "#F781BF"
 };
 // Shape encodes explicit vs. clean so color stays free for genre
-const SHAPES = { "Clean": "circle", "Explicit": "triangle-up" };
+const SHAPES = { "Clean": "circle", "Explicit": "circle" };
 const CONFIG = { responsive: true, displaylogo: false };
 
 // ---------- State ----------
@@ -128,12 +128,12 @@ function drawScatter() {
       marker: { color: COLORS[g], size: 5, opacity: 0.55,
                 symbol: d.map(r => SHAPES[r.explicit]) },
       hovertemplate: "<b>%{customdata[1]}</b><br>%{customdata[2]}<br>" +
-        g + " · %{customdata[3]}<br>Length: %{x:.2f} min<br>Popularity: %{y}<extra></extra>"
+        g + "<br>Length: %{x:.2f} min<br>Popularity: %{y}<extra></extra>"
     };
   });
   Plotly.react("scatter", traces, {
     title: { text: "Q2 · Song length vs. popularity (drag to select)", font: { size: 15 } },
-    xaxis: { title: "Length (minutes)", range: [0, 8] },  // a few >8 min outliers: zoom out to see
+    xaxis: { title: "Length (minutes)", range: [0, 8], dtick: 1 },
     yaxis: { title: "Popularity (0–100)", range: [-3, 103] },
     dragmode: "select", showlegend: false,
     margin: { t: 45, r: 20, b: 50, l: 60 }
@@ -154,7 +154,7 @@ function drawBox() {
   });
   Plotly.react("box", traces, {
     title: { text: "Q3 · Tempo spread by genre", font: { size: 15 } },
-    yaxis: { title: "Tempo (BPM)", range: [40, 230] },
+    yaxis: { title: "Tempo (BPM)", range: [40, 225], dtick: 40, tick0: 40 },
     xaxis: { title: "Genre", categoryorder: "array", categoryarray: GENRES },
     showlegend: false,
     margin: { t: 45, r: 20, b: 50, l: 60 }
@@ -166,7 +166,7 @@ function drawLegend() {
   const genres = GENRES.map(g =>
     `<span><span class="sw" style="background:${COLORS[g]}"></span>${g}</span>`).join("");
   document.getElementById("legend").innerHTML =
-    genres + `<span>● clean &nbsp; ▲ explicit (scatter)</span>`;
+    genres;
 }
 
 function redrawAll() { drawBar(); drawScatter(); drawBox(); updateStatus(); }
