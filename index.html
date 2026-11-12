@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spotify Genre Dashboard</title>
+<!--
+  Mini-Project 2 prototype: interactive dashboard of 6 Spotify genres.
+  Views (one per research question):
+    Q1  Bar chart   - average popularity by genre
+    Q2  Scatter     - song length vs. popularity
+    Q3  Box plot    - tempo spread by genre
+  Linking:
+    - Click a bar           -> scatter and box plot show only that genre
+    - Box/lasso-select dots -> bar chart and box plot recompute for those songs
+    - Hover any mark        -> tooltip with details
+  Data: data/spotify_6genres.csv (cleaned by prepare_data.py)
+-->
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; background: #f6f6f4; color: #1f1f1f; }
+  header { padding: 20px 24px 8px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: #555; font-size: 14px; margin: 0; }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 8px 24px; font-size: 14px; }
+  button { font: inherit; padding: 6px 14px; border: 1px solid #999; border-radius: 6px; background: #fff; cursor: pointer; }
+  button:hover { background: #eee; }
+  #status { color: #333; }
+  .panel { background: #fff; border: 1px solid #d9d9d4; border-radius: 10px; margin: 12px 24px; padding: 8px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  @media (max-width: 900px) { .row { grid-template-columns: 1fr; } }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; padding: 0 24px; color: #333; }
+  .sw { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>What makes a song popular? Six genres on Spotify</h1>
+  <p class="sub">Reggae, dancehall, reggaeton, afrobeat, pop and R&amp;B &middot; Spotify Tracks Dataset (Kaggle)</p>
+</header>
+
+<div class="controls">
+  <button id="reset">Reset filters</button>
+  <span id="status">Loading data…</span>
+</div>
+<div class="legend" id="legend"></div>
+
+<!-- Q1: the main filter sits on top to set the visual hierarchy -->
+<div class="panel"><div id="bar" style="height:300px"></div></div>
+
+<!-- Q2 + Q3: enclosed together because both respond to the genre selection -->
+<div class="panel row">
+  <div id="scatter" style="height:420px"></div>
+  <div id="box" style="height:420px"></div>
+</div>
+
+<script>
+// ---------- Constants ----------
+const GENRES = ["reggae", "dancehall", "reggaeton", "afrobeat", "pop", "r-n-b"];
+// Okabe-Ito colorblind-safe palette; each genre keeps the same color in every view
+const COLORS = {
+  "reggae": "#009E73", "dancehall": "#E69F00", "reggaeton": "#CC79A7",
+  "afrobeat": "#D55E00", "pop": "#0072B2", "r-n-b": "#56B4E9"
+};
+// Shape encodes explicit vs. clean so color stays free for genre
+const SHAPES = { "Clean": "circle", "Explicit": "triangle-up" };
+const CONFIG = { responsive: true, displaylogo: false };
+
+// ---------- State ----------
+let rows = [];               // all songs
+let selectedGenre = null;    // set by clicking a bar
+let brushedIds = null;       // Set of row ids from a scatter selection
+
+// ---------- Helpers ----------
+const mean = a => a.reduce((s, v) => s + v, 0) / a.length;
+
+// Songs that pass the current filters
+function activeRows() {
+  return rows.filter(r =>
+    (!selectedGenre || r.track_genre === selectedGenre) &&
+    (!brushedIds || brushedIds.has(r.id)));
+}
+
+function updateStatus() {
+  const n = activeRows().length;
+  let msg = `Showing ${n.toLocaleString()} of ${rows.length.toLocaleString()} songs`;
+  if (selectedGenre) msg += ` · genre: ${selectedGenre}`;
+  if (brushedIds) msg += ` · ${brushedIds.size} songs selected in scatter`;
+  document.getElementById("status").textContent = msg;
+}
+
+// ---------- View 1: bar chart (Q1) ----------
+function drawBar() {
+  // Brushing in the scatter changes which songs are averaged
+  const base = brushedIds ? rows.filter(r => brushedIds.has(r.id)) : rows;
+  const avg = GENRES.map(g => {
+    const p = base.filter(r => r.track_genre === g).map(r => r.popularity);
+    return p.length ? mean(p) : 0;
+  });
+  const counts = GENRES.map(g => base.filter(r => r.track_genre === g).length);
+  // Fade unselected bars so the clicked genre stands out
+  const opacity = GENRES.map(g => !selectedGenre || g === selectedGenre ? 1 : 0.25);
+
+  Plotly.react("bar", [{
+    type: "bar", x: GENRES, y: avg,
+    marker: { color: GENRES.map(g => COLORS[g]), opacity },
+    customdata: counts,
+    hovertemplate: "<b>%{x}</b><br>Avg popularity: %{y:.1f}<br>Songs: %{customdata}<extra></extra>"
+  }], {
+    title: { text: "Q1 · Average popularity by genre (click a bar to filter)", font: { size: 15 } },
+    yaxis: { title: "Average popularity (0–100)", range: [0, 100] },
+    xaxis: { title: "Genre" },
+    margin: { t: 45, r: 20, b: 50, l: 60 },
+    transition: { duration: 300 }
+  }, CONFIG);
+}
+
+// ---------- View 2: scatter (Q2) ----------
+function drawScatter() {
+  const shown = GENRES.filter(g => !selectedGenre || g === selectedGenre);
+  const traces = shown.map(g => {
+    const d = rows.filter(r => r.track_genre === g);
+    return {
+      type: "scattergl", mode: "markers", name: g,
+      x: d.map(r => r.length_min), y: d.map(r => r.popularity),
+      customdata: d.map(r => [r.id, r.track_name, r.artists, r.explicit]),
+      marker: { color: COLORS[g], size: 5, opacity: 0.55,
+                symbol: d.map(r => SHAPES[r.explicit]) },
+      hovertemplate: "<b>%{customdata[1]}</b><br>%{customdata[2]}<br>" +
+        g + " · %{customdata[3]}<br>Length: %{x:.2f} min<br>Popularity: %{y}<extra></extra>"
+    };
+  });
+  Plotly.react("scatter", traces, {
+    title: { text: "Q2 · Song length vs. popularity (drag to select)", font: { size: 15 } },
+    xaxis: { title: "Length (minutes)", range: [0, 8] },  // a few >8 min outliers: zoom out to see
+    yaxis: { title: "Popularity (0–100)", range: [-3, 103] },
+    dragmode: "select", showlegend: false,
+    margin: { t: 45, r: 20, b: 50, l: 60 }
+  }, CONFIG);
+}
+
+// ---------- View 3: box plot (Q3) ----------
+function drawBox() {
+  const data = activeRows();
+  const traces = GENRES.map(g => {
+    const t = data.filter(r => r.track_genre === g).map(r => r.tempo);
+    return {
+      type: "box", name: g, y: t, x: t.map(() => g),
+      marker: { color: COLORS[g] }, line: { width: 1.5 },
+      boxpoints: false,
+      hovertemplate: "<b>" + g + "</b><br>%{y:.0f} BPM<extra></extra>"
+    };
+  });
+  Plotly.react("box", traces, {
+    title: { text: "Q3 · Tempo spread by genre", font: { size: 15 } },
+    yaxis: { title: "Tempo (BPM)", range: [40, 230] },
+    xaxis: { title: "Genre", categoryorder: "array", categoryarray: GENRES },
+    showlegend: false,
+    margin: { t: 45, r: 20, b: 50, l: 60 }
+  }, CONFIG);
+}
+
+// ---------- Legend (same colors as every view) ----------
+function drawLegend() {
+  const genres = GENRES.map(g =>
+    `<span><span class="sw" style="background:${COLORS[g]}"></span>${g}</span>`).join("");
+  document.getElementById("legend").innerHTML =
+    genres + `<span>● clean &nbsp; ▲ explicit (scatter)</span>`;
+}
+
+function redrawAll() { drawBar(); drawScatter(); drawBox(); updateStatus(); }
+
+// ---------- Linking ----------
+function wireEvents() {
+  // Click a bar: toggle the genre filter, clear any scatter selection
+  document.getElementById("bar").on("plotly_click", ev => {
+    const g = ev.points[0].x;
+    selectedGenre = selectedGenre === g ? null : g;
+    brushedIds = null;
+    redrawAll();
+  });
+
+  // Select dots in the scatter: recompute bar averages and tempo boxes
+  const sc = document.getElementById("scatter");
+  sc.on("plotly_selected", ev => {
+    if (!ev || !ev.points.length) { brushedIds = null; }
+    else { brushedIds = new Set(ev.points.map(p => p.customdata[0])); }
+    drawBar(); drawBox(); updateStatus();
+  });
+  sc.on("plotly_deselect", () => { brushedIds = null; drawBar(); drawBox(); updateStatus(); });
+
+  document.getElementById("reset").addEventListener("click", () => {
+    selectedGenre = null; brushedIds = null; redrawAll();
+  });
+}
+
+// ---------- Load data ----------
+Papa.parse("data/spotify_6genres.csv", {
+  download: true, header: true, dynamicTyping: true, skipEmptyLines: true,
+  complete: res => {
+    rows = res.data.map((r, i) => ({ ...r, id: i, track_name: String(r.track_name), artists: String(r.artists) }));
+    drawLegend();
+    redrawAll();
+    wireEvents();
+  },
+  error: err => {
+    document.getElementById("status").textContent =
+      "Could not load data. Open this page through GitHub Pages or a local server, not by double-clicking the file.";
+    console.error(err);
+  }
+});
+</script>
+</body>
+</html>
