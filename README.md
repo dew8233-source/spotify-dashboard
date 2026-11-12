@@ -29,7 +29,7 @@ Interactive dashboard comparing six Spotify genres: reggae, dancehall, reggaeton
   - removed songs with tempo = 0 (no tempo detected)
   - converted duration from milliseconds to minutes
   - result: 4,657 songs
-- Columns used: genre, popularity, length (min), tempo (BPM), explicit, plus song and artist names for tooltips.
+- Columns used: genre, popularity, length (min), tempo (BPM), plus song and artist names for tooltips.
 
 ## Encodings
 
@@ -39,10 +39,10 @@ Interactive dashboard comparing six Spotify genres: reggae, dancehall, reggaeton
 | Genre | Categorical | Bar, point, box | X-position + color hue (Okabe-Ito colorblind-safe palette) | Expressiveness |
 | Song length | Quantitative | Point | X-position | Effectiveness |
 | Tempo | Quantitative | Box | Y-position | Effectiveness |
-| Explicit | Categorical | Point | Shape (circle = clean, triangle = explicit) | Expressiveness |
 
-Change from the proposal: added explicit vs. clean as shape in the scatter plot (a 5th dimension).
 
 ## Tools
 
 Plotly.js 2.35.2 and PapaParse 5.4.1, loaded from jsDelivr.
+
+Also got help from claude developing interactive dashboard.
